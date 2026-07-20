@@ -1,0 +1,16 @@
+{
+  "name": "CPR Metronome",
+  "short_name": "CPR",
+  "description": "120 BPM CPR metronome with voiced counts, 30:2 team cycles and solo mode",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#050607",
+  "theme_color": "#050607",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
