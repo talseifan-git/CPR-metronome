@@ -1,4 +1,4 @@
-const CACHE = "cpr-20260719121814";
+const CACHE = "cpr-20260724181013";
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest",
                 "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 self.addEventListener("install", e => {
