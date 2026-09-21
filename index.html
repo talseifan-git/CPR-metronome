@@ -62,13 +62,16 @@
   /* buttons */
   #btns{width:100%; max-width:420px; display:flex; flex-direction:column; gap:8px;}
   button{font-family:inherit; cursor:pointer; border:none; border-radius:14px;}
-  #startBtn{
-    height:64px; font-size:24px; font-weight:800; letter-spacing:.12em;
+  #primaryRow{display:flex; gap:8px;}
+  .mainBtn{
+    flex:1 1 0; height:64px; font-size:22px; font-weight:800; letter-spacing:.1em;
     color:#fff; background:var(--red);
   }
-  #startBtn:active{background:var(--red-press);}
-  #startBtn.running{background:#8f1622;}
-  #startBtn.resume{background:#1d7f3f;}
+  .mainBtn:active{background:var(--red-press);}
+  #startBtn{background:var(--red);}
+  #pauseBtn{background:#8a6a16;}
+  #resumeBtn{background:#1d7f3f;}
+  #stopBtn{background:var(--red-press);}
   #resetBtn{
     height:58px; font-size:16px; font-weight:700; letter-spacing:.06em;
     color:var(--fg); background:var(--panel); border:1px solid var(--line);
@@ -88,6 +91,8 @@
   .row output{font-size:13px; color:var(--dim); min-width:34px; text-align:right;
     font-variant-numeric:tabular-nums;}
   .row.off{opacity:.35;}
+  .row.hidden{display:none;}
+  .row.locked{opacity:.45; pointer-events:none;}
   .seg{display:flex; margin-left:auto; border:1px solid var(--line); border-radius:10px; overflow:hidden; flex:1 1 auto; max-width:280px;}
   .seg button{
     border-radius:0; background:transparent; color:var(--dim);
@@ -118,7 +123,7 @@
     header h1{font-size:16px;} #sub{font-size:12px;} #clock{font-size:22px;}
     #ringWrap{width:min(66vw,225px);}
     #num{font-size:60px;} #stateLab{font-size:12px; min-height:14px;}
-    #startBtn{height:52px; font-size:20px;}
+    .mainBtn{height:52px; font-size:18px;}
     #resetBtn{height:46px; font-size:14px;}
     .row{min-height:36px;}
     footer{display:none;}
@@ -141,11 +146,30 @@
 </div>
 
 <div id="btns">
-  <button id="startBtn">START</button>
+  <div id="primaryRow">
+    <button id="startBtn" class="mainBtn">START</button>
+    <button id="pauseBtn" class="mainBtn" style="display:none">PAUSE</button>
+    <button id="resumeBtn" class="mainBtn" style="display:none">RESUME</button>
+    <button id="stopBtn" class="mainBtn" style="display:none">STOP</button>
+  </div>
   <button id="resetBtn" class="hide">RESET COUNT TO 1</button>
 </div>
 
 <div id="panel">
+  <div class="row" id="patientRow">
+    <span class="lab">Patient</span>
+    <div class="seg" role="group" aria-label="Patient age group">
+      <button id="patientAdult" class="on" aria-pressed="true"><span>ADULT</span></button>
+      <button id="patientKid" aria-pressed="false"><span>KID</span></button>
+    </div>
+  </div>
+  <div class="row hidden" id="rescuersRow">
+    <span class="lab">Rescuers</span>
+    <div class="seg" role="group" aria-label="Number of rescuers (kid Full CPR only — changes compressions:breath ratio)">
+      <button id="rescuersSolo" class="on" aria-pressed="true"><span>SOLO</span><span style="font-size:7.5px;opacity:.7">30:2</span></button>
+      <button id="rescuersTeam" aria-pressed="false"><span>TEAM</span><span style="font-size:7.5px;opacity:.7">15:2</span></button>
+    </div>
+  </div>
   <div class="row">
     <span class="lab">Mode</span>
     <div class="seg" role="group" aria-label="CPR mode">
@@ -182,20 +206,19 @@ const VOICE_DATA = {"six": "UklGRjwxAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAATElT
 
 /* ================= constants =============================================== */
 let BEAT = 60 / 110;              // compression interval (s); derived from rate slider, default 110 BPM
-const CYCLE = 30;
+const SOLO_CYCLE = 30;             // compressions-only ring length — fixed, unaffected by patient/rescuer count
+let TEAM_CYCLE = 30;               // full-CPR compressions-per-cycle before a breath pause: 30:2 (adult, or kid solo); 15:2 (kid, team)
 const AHEAD = 0.12;               // schedule-ahead window (s)
 const TICK_MS = 25;               // scheduler interval
 const SWAP_EVERY = 120;          // s: swap deadline after last swap-pause end
 const SWAP_CAP = 180;            // s: hard cap — forced swap pause
 const BREATH_CAP = 30;            // s: hard cap — forced breathing pause (team)
-const RUN_START = 25;             // dirty-while-pending: next beat jumps here
-const GRACE_MS = 10000;           // resume window after stop
+let RUN_START = 25;               // dirty-while-pending: next beat jumps here — always TEAM_CYCLE - 5
 const VENT_INTERVAL = 6;          // s: rescue-breath cycle, pulse present (10/min)
 const VENT_DOTS = 6;               // dots in the pulse-mode ring, one per second of the cycle
 const SOLO_WARN_COUNT = 10;        // compressions-only: length of the spoken swap countdown
 const VOICE_GAIN = 0.8;
 
-const COUNT_WORDS = {26:"six", 27:"seven", 28:"eight", 29:"nine", 30:"thirty"};
 const NUM_WORDS = {5:"five", 4:"four", 3:"three", 2:"two", 1:"one"};
 const SOLO_SWAP_WORDS = {10:"ten", 9:"nine", 8:"eight", 7:"seven", 6:"six", 5:"five", 4:"four", 3:"three", 2:"two", 1:"one"};
 
@@ -204,8 +227,10 @@ let ctx = null, voiceGain = null;
 const buffers = {};
 let buffersReady = false;
 
-let running = false, starting = false;
-let mode = 2;                     // rescuers
+let running = false, starting = false, paused = false;
+let mode = 2;                     // 1 compressions-only, 2 full CPR, 3 pulse present
+let patient = "adult";            // adult | kid — locked once CPR has started; only changeable when fully reset
+let rescuers = "solo";            // solo | team — only meaningful for kid + full CPR (mode 2); changeable live
 let phase = "beats";              // beats | pause
 let pauseKind = "";               // breath | swr
 let beat = 1;                     // team count (next beat to schedule)
@@ -231,27 +256,33 @@ let visualQ = [];
 let disp = {phase:"idle", end:0, pauseKind:""};
 let wakeLock = null;
 
-/* session timer / grace */
-let sessionEpoch = 0;             // Date.now at session start (survives resume)
-let frozenMs = 0;                 // elapsed shown while stopped
-let graceUntil = 0;               // Date.now deadline for resume, 0 = none
-let graceTimer = null;
+/* session timer */
+let sessionEpoch = 0;             // Date.now at session start (survives pause/resume)
+let frozenMs = 0;                 // elapsed shown while paused or stopped
 
 /* ================= dom ===================================================== */
 const $ = id => document.getElementById(id);
 const numEl = $("num"), labEl = $("stateLab"), subEl = $("sub"), clockEl = $("clock");
-const startBtn = $("startBtn"), resetBtn = $("resetBtn");
+const startBtn = $("startBtn"), pauseBtn = $("pauseBtn"), resumeBtn = $("resumeBtn"), stopBtn = $("stopBtn");
+const resetBtn = $("resetBtn");
 const mode1Btn = $("mode1"), mode2Btn = $("mode2"), mode3Btn = $("mode3");
+const patientRow = $("patientRow"), patientAdultBtn = $("patientAdult"), patientKidBtn = $("patientKid");
+const rescuersRow = $("rescuersRow");
+const rescuersSoloBtn = $("rescuersSolo"), rescuersTeamBtn = $("rescuersTeam");
 const breathRow = $("breathRow"), breathLen = $("breathLen");
 const swapRow = $("swapRow"), swapLen = $("swapLen");
 const rateRow = $("rateRow"), rateLen = $("rateLen"), rateOut = $("rateOut");
 
-/* build ring: dot 1 at 12 o'clock, clockwise */
+/* build ring: dot 1 at 12 o'clock, clockwise — dot count follows the active cycle length
+   (30 normally, or 15 for kid + team full CPR), so it's rebuilt whenever that changes */
 const dotEls = [];
-(function(){
+function ringCycleFor(m){ return m === 1 ? SOLO_CYCLE : TEAM_CYCLE; }
+function buildRing(n){
   const g = $("dots");
-  for(let i = 0; i < CYCLE; i++){
-    const a = (-90 + i * 12) * Math.PI / 180;
+  g.innerHTML = "";
+  dotEls.length = 0;
+  for(let i = 0; i < n; i++){
+    const a = (-90 + i * (360 / n)) * Math.PI / 180;
     const c = document.createElementNS("http://www.w3.org/2000/svg","circle");
     c.setAttribute("cx", (100 + 90 * Math.cos(a)).toFixed(2));
     c.setAttribute("cy", (100 + 90 * Math.sin(a)).toFixed(2));
@@ -259,7 +290,8 @@ const dotEls = [];
     c.setAttribute("class", "dot");
     g.appendChild(c); dotEls.push(c);
   }
-})();
+}
+buildRing(ringCycleFor(mode));
 const ventDotEls = [];
 (function(){
   const g = $("ventDots");
@@ -323,7 +355,7 @@ function voicedBeat(word, t){ playVoice(word, t); lowClick(t); }
 
 /* ================= timing helpers ========================================== */
 function isPending(t){ return t >= swapDeadline - 1e-6; }
-function lockedAt(t){ return beat >= 26 && (isPending(t) || forced !== null); }
+function lockedAt(t){ return beat >= RUN_START + 1 && (isPending(t) || forced !== null); }
 function nextSlot(from){ /* next grid slot >= from; nextTime is always on-grid */
   const k = Math.ceil((from - nextTime) / BEAT);
   return nextTime + Math.max(k, 0) * BEAT;
@@ -393,6 +425,7 @@ function schedulerTick(){
       phase = "beats"; beat = 1; dirty = false; ranJump = false;
       forced = null; upcomingSwap = null;
       if(mode === 3){ ventBeat = 0; ventInv = !ventInv; }  /* alternate dot color each full cycle */
+      if(mode === 2 && dotEls.length !== TEAM_CYCLE) buildRing(TEAM_CYCLE);  /* Rescuers may have changed mid-pause */
       continue;                            /* beats resume at nextTime = phaseEnd */
     }
     const t = nextTime;
@@ -419,7 +452,7 @@ function schedulerTick(){
       }
       visualQ.push({t, kind:"beat", m:1, beat, inv:soloInv, warn, cnt});
       nextTime += BEAT; beat++;
-      if(beat > CYCLE){ beat = 1; soloInv = !soloInv; }
+      if(beat > SOLO_CYCLE){ beat = 1; soloInv = !soloInv; }
     } else if(mode === 3){
       /* ---- pulse present: no compressions; count 6s, then a rescue breath on top ---- */
       if(ventBeat < VENT_INTERVAL){
@@ -431,31 +464,32 @@ function schedulerTick(){
       }
     } else {
       /* ---- team ---- */
-      if(beat <= 25){
-        if(t >= swapCapAt - 2.6){ beat = 26; forced = "swap"; }
-        else if(t >= breathCapAt - 2.6){ beat = 26; forced = "breath"; }
+      /* TEAM_CYCLE/RUN_START are live: a Rescuers (Solo/Team) change updates them immediately,
+         and setRescuers() reconciles the in-flight beat count against them right away (see
+         below) — so this loop can always just read the current values with no staleness. */
+      if(beat <= RUN_START){
+        if(t >= swapCapAt - 2.6){ beat = RUN_START + 1; forced = "swap"; }
+        else if(t >= breathCapAt - 2.6){ beat = RUN_START + 1; forced = "breath"; }
         else if(isPending(t) && dirty && !ranJump){ beat = RUN_START; ranJump = true; }
       }
       let cnt = beat, lab = "";
-      if(beat >= 26){
+      if(beat >= RUN_START + 1){
         if(upcomingSwap === null){          /* latch the coming pause type once */
-          const end = t + (CYCLE + 1 - beat) * BEAT;
+          const end = t + (TEAM_CYCLE + 1 - beat) * BEAT;
           /* look one cycle ahead: if the deadline falls before the end of the
              FOLLOWING cycle, take the swap now rather than late */
           upcomingSwap = forced === "swap" || isPending(end) ||
-                        swapDeadline <= end + (+breathLen.value) + CYCLE * BEAT;
+                        swapDeadline <= end + (+breathLen.value) + TEAM_CYCLE * BEAT;
         }
-        if(upcomingSwap){                  /* countdown announces the swap pause */
-          cnt = CYCLE + 1 - beat; lab = "swr";
-          voicedBeat(NUM_WORDS[cnt], t);
-        } else {                           /* countup announces breaths */
-          lab = "b";
-          voicedBeat(COUNT_WORDS[beat], t);
-        }
+        /* last five compressions are always counted down aloud (five…one),
+           whether the coming pause is a swap or a plain breath */
+        cnt = TEAM_CYCLE + 1 - beat;
+        lab = upcomingSwap ? "swr" : "b";
+        voicedBeat(NUM_WORDS[cnt], t);
       } else tickSnd(t);
       visualQ.push({t, kind:"beat", m:2, beat, cnt, lab});
       nextTime += BEAT; beat++;
-      if(beat > CYCLE){
+      if(beat > TEAM_CYCLE){
         beat = 1;
         const end = nextTime;
         if(upcomingSwap) enterSwapPause(end);
@@ -488,6 +522,7 @@ function resetCount(){
   if(lockedAt(t)) return;                       /* locked final five before a swap/cap: untouchable */
   const ev = cancelFuture();
   dirty = true; upcomingSwap = null;
+  if(dotEls.length !== TEAM_CYCLE) buildRing(TEAM_CYCLE);   /* adopt the currently selected ratio */
   if(isPending(t)){ beat = RUN_START; ranJump = true; }
   else beat = 1;
   nextTime = ev ? ev.t : nextSlot(t + 0.15);
@@ -496,9 +531,10 @@ function resetCount(){
 }
 function resetTime(){
   frozenMs = 0;
-  cancelGrace(true);                            /* declared a new case */
 }
-resetBtn.addEventListener("click", () => { running ? resetCount() : resetTime(); });
+resetBtn.addEventListener("click", () => {
+  if(running) resetCount(); else if(!paused) resetTime();
+});
 
 /* ================= mode switch ============================================= */
 const breathLab = $("breathLab");
@@ -516,8 +552,10 @@ function setMode(m){
   mode1Btn.setAttribute("aria-pressed", m === 1);
   mode2Btn.setAttribute("aria-pressed", m === 2);
   mode3Btn.setAttribute("aria-pressed", m === 3);
-  subEl.textContent = m === 2 ? (rateLen.value + " BPM · 30:2") : m === 3 ? "10/min · rescue breaths" : (rateLen.value + " BPM · continuous");
+  subEl.textContent = m === 2 ? (rateLen.value + " BPM · " + TEAM_CYCLE + ":2") : m === 3 ? "10/min · rescue breaths" : (rateLen.value + " BPM · continuous");
   ringWrap.classList.toggle("vent", m === 3);
+  rescuersRow.classList.toggle("hidden", !(patient === "kid" && m === 2));
+  if(dotEls.length !== ringCycleFor(m)) buildRing(ringCycleFor(m));
   rateRow.classList.toggle("off", m === 3);        /* rate only applies to compressions (SOLO/TEAM) */
   rateLen.disabled = (m === 3);
   breathRow.classList.toggle("off", m === 1);      /* used by both TEAM and PULSE */
@@ -553,42 +591,158 @@ function setMode(m){
     forced = null; ventBeat = 0;
     nextTime = slot;
   } else {
-    dirty = true;                               /* switch-created circle is dirty */
-    breathCapAt = lastPauseEnd + BREATH_CAP;    /* breaths owed since last pause */
-    /* which beat a team circle would be at, had it run since the last pause */
-    const elapsedBeats = Math.floor((slot - lastPauseEnd) / BEAT + 1e-6);
-    let b = elapsedBeats + 1;
-    if(isPending(t) || b > RUN_START) b = RUN_START;
-    beat = Math.max(1, b);
-    ranJump = (beat === RUN_START);
-    if(beat === RUN_START){
-      /* honor the full 25-run: an already-expired breath cap must not
-         shorten it to a 26-run; the run's own pause re-arms the cap */
-      breathCapAt = Math.max(breathCapAt, slot + (CYCLE + 1 - RUN_START) * BEAT + 0.1);
-    }
-    forced = null;
-    nextTime = slot;
+    repositionTeamCircleLive(t, slot);
   }
   phase = "beats";
   schedulerTick();
   disp = {phase:"idle", end:0, pauseKind:""};
 }
+/* recompute where the team circle stands (beat, breathCapAt) against the current
+   TEAM_CYCLE/RUN_START — used both when switching live into Full CPR and when the
+   Rescuers ratio (Solo/Team) changes live while Full CPR is already running */
+function repositionTeamCircleLive(t, slot){
+  if(dotEls.length !== TEAM_CYCLE) buildRing(TEAM_CYCLE);   /* (re-)entering Full CPR adopts the current ratio */
+  dirty = true;                               /* switch-created circle is dirty */
+  breathCapAt = lastPauseEnd + BREATH_CAP;    /* breaths owed since last pause */
+  /* which beat a team circle would be at, had it run since the last pause */
+  const elapsedBeats = Math.floor((slot - lastPauseEnd) / BEAT + 1e-6);
+  let b = elapsedBeats + 1;
+  if(isPending(t) || b > RUN_START) b = RUN_START;
+  beat = Math.max(1, b);
+  ranJump = (beat === RUN_START);
+  if(beat === RUN_START){
+    /* honor the full run: an already-expired breath cap must not shorten it;
+       the run's own pause re-arms the cap */
+    breathCapAt = Math.max(breathCapAt, slot + (TEAM_CYCLE + 1 - RUN_START) * BEAT + 0.1);
+  }
+  forced = null;
+  nextTime = slot;
+}
 mode1Btn.addEventListener("click", () => setMode(1));
 mode2Btn.addEventListener("click", () => setMode(2));
 mode3Btn.addEventListener("click", () => setMode(3));
 
-/* ================= start / stop / resume / grace =========================== */
-function cancelGrace(toStart){
-  if(graceTimer){ clearTimeout(graceTimer); graceTimer = null; }
-  graceUntil = 0;
-  phase = "beats"; beat = 1; dirty = false; ranJump = false; forced = null; upcomingSwap = null; soloInv = false; ventBeat = 0; ventInv = false;
-  if(toStart !== false){ startBtn.textContent = "START"; startBtn.classList.remove("resume"); }
-  showIdle();
+/* ================= patient (adult/kid) & rescuers (solo/team) ============== */
+/* Adult behaves exactly as before in every mode. Kid changes only Full CPR's
+   compressions:breath ratio — 30:2 solo (same as adult), 15:2 team — via TEAM_CYCLE/
+   RUN_START, which the whole scheduler reads live. Patient can only be changed once CPR
+   has been fully reset (Stop) — not merely paused. Rescuers can be changed any time,
+   including while counting: the change takes effect immediately, WITHOUT resetting the
+   compression count — it only changes how many compressions remain until the next pause.
+   If the new (smaller) cycle is already behind the current count, the cycle wraps up on
+   the very next beat instead of stretching out to the old, larger one. */
+function updateTeamCycle(){
+  TEAM_CYCLE = (patient === "kid" && rescuers === "team") ? 15 : 30;
+  RUN_START = TEAM_CYCLE - 5;
+}
+function setPatient(p){
+  if(running || paused || p === patient) return;   /* only changeable once fully reset */
+  patient = p;
+  patientAdultBtn.classList.toggle("on", patient === "adult");
+  patientKidBtn.classList.toggle("on", patient === "kid");
+  patientAdultBtn.setAttribute("aria-pressed", patient === "adult");
+  patientKidBtn.setAttribute("aria-pressed", patient === "kid");
+  updateTeamCycle();
+  rescuersRow.classList.toggle("hidden", !(patient === "kid" && mode === 2));
+  if(mode === 2){
+    if(dotEls.length !== TEAM_CYCLE) buildRing(TEAM_CYCLE);
+    subEl.textContent = rateLen.value + " BPM · " + TEAM_CYCLE + ":2";
+  }
+  showIdle();                                  /* always reached with running === false && paused === false */
+}
+function setRescuers(r){
+  if(r === rescuers) return;
+  rescuers = r;
+  rescuersSoloBtn.classList.toggle("on", rescuers === "solo");
+  rescuersTeamBtn.classList.toggle("on", rescuers === "team");
+  rescuersSoloBtn.setAttribute("aria-pressed", rescuers === "solo");
+  rescuersTeamBtn.setAttribute("aria-pressed", rescuers === "team");
+  updateTeamCycle();
+  if(mode === 2) subEl.textContent = rateLen.value + " BPM · " + TEAM_CYCLE + ":2";
+  if(mode !== 2) return;                        /* nothing else applies outside Full CPR */
+
+  if(phase === "pause"){
+    /* respiration (or swap+respiration) is already playing: let it run its full, set
+       length — do NOT cut it short. Just make sure the ring reflects the new ratio
+       right away; the next cycle, once this pause ends on its own, already reads
+       TEAM_CYCLE/RUN_START live, so it automatically starts under the new ratio. */
+    if(dotEls.length !== TEAM_CYCLE){
+      buildRing(TEAM_CYCLE);
+      paintPause();                              /* keep the pause tint after the ring rebuild */
+    }
+    return;
+  }
+
+  if(phase !== "beats") return;                  /* mode 1's swapPause — doesn't apply here (mode === 2) */
+
+  if(dotEls.length !== TEAM_CYCLE) buildRing(TEAM_CYCLE);
+  if(beat > TEAM_CYCLE) beat = TEAM_CYCLE;       /* ratio shrank past where we already are — wrap up now */
+  upcomingSwap = null;                           /* re-decide swap-vs-breath against the new cycle length */
+
+  if(running){
+    const t = ctx.currentTime;
+    cancelFuture();                              /* drop any beats already scheduled under the old ratio */
+    nextTime = nextSlot(t + 0.15);
+    schedulerTick();
+  } else if(paused){
+    numEl.textContent = (beat >= RUN_START + 1) ? (TEAM_CYCLE + 1 - beat) : beat;
+    paintDots(beat);                             /* keep the frozen display consistent with the new ratio */
+  } else {
+    showIdle();
+  }
+}
+patientAdultBtn.addEventListener("click", () => setPatient("adult"));
+patientKidBtn.addEventListener("click", () => setPatient("kid"));
+rescuersSoloBtn.addEventListener("click", () => setRescuers("solo"));
+rescuersTeamBtn.addEventListener("click", () => setRescuers("team"));
+
+/* ================= start / pause / resume / stop ============================ */
+/* Three states: idle/reset (only Start shown), running (Pause + Stop shown),
+   paused (Resume + Stop shown). Pause freezes everything exactly as it is and can
+   be resumed. Stop ends the session, resets Mode/Patient/Rescuers/rate/respiration/
+   swap back to defaults — but never touches the elapsed clock; that's its own
+   separate "RESET TIME TO 0" action, as before. */
+function updateButtons(){
+  const idle = !running && !paused;
+  startBtn.style.display = idle ? "" : "none";
+  pauseBtn.style.display = running ? "" : "none";
+  resumeBtn.style.display = paused ? "" : "none";
+  stopBtn.style.display = (running || paused) ? "" : "none";
+}
+function resetSettingsToDefault(){
+  /* patient / rescuers back to Adult / Solo */
+  patient = "adult"; rescuers = "solo";
+  patientAdultBtn.classList.add("on"); patientKidBtn.classList.remove("on");
+  patientAdultBtn.setAttribute("aria-pressed", "true"); patientKidBtn.setAttribute("aria-pressed", "false");
+  rescuersSoloBtn.classList.add("on"); rescuersTeamBtn.classList.remove("on");
+  rescuersSoloBtn.setAttribute("aria-pressed", "true"); rescuersTeamBtn.setAttribute("aria-pressed", "false");
+  rescuersRow.classList.add("hidden");
+  updateTeamCycle();
+
+  /* mode back to Full CPR */
+  mode = 2;
+  mode1Btn.classList.remove("on"); mode2Btn.classList.add("on"); mode3Btn.classList.remove("on");
+  mode1Btn.setAttribute("aria-pressed", "false"); mode2Btn.setAttribute("aria-pressed", "true"); mode3Btn.setAttribute("aria-pressed", "false");
+  ringWrap.classList.remove("vent");
+  rateRow.classList.remove("off"); rateLen.disabled = false;
+  breathRow.classList.remove("off"); breathLen.disabled = false;
+  swapRow.classList.remove("off"); swapLen.disabled = false;
+  breathLab.textContent = "Respiration";
+  breathLen.setAttribute("aria-label", "Respiration pause length, seconds");
+
+  /* sliders back to defaults */
+  rateLen.value = "110"; rateOut.textContent = "110 BPM"; BEAT = 60 / 110;
+  teamBreathLen = 3; pulseBreathLen = 2;
+  breathLen.min = "2"; breathLen.max = "5"; breathLen.step = "1"; breathLen.value = "3";
+  $("breathOut").textContent = "3 s";
+  swapLen.value = "10"; $("swapOut").textContent = "10 s";
+
+  if(dotEls.length !== TEAM_CYCLE) buildRing(TEAM_CYCLE);
+  subEl.textContent = "110 BPM · 30:2";
 }
 async function start(){
   if(running || starting) return;
   starting = true; startBtn.disabled = true;
-  const resuming = graceUntil > 0 && Date.now() < graceUntil;
   try{
     if(!ctx){
       ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -599,77 +753,109 @@ async function start(){
     if(ctx.state === "suspended") await ctx.resume();
     if(!buffersReady) await decodeAll();
     scheduled = []; visualQ = [];
-    running = true;
+    running = true; paused = false;
 
-    if(resuming){
-      if(graceTimer){ clearTimeout(graceTimer); graceTimer = null; }
-      graceUntil = 0;
-      const t = ctx.currentTime;
-      if(phase === "pause" || phase === "swapPause"){
-        if(phaseEnd > t + 0.05){
-          nextTime = (phase === "swapPause") ? t + 0.05 : phaseEnd;   /* swapPause keeps beeping; others just wait out */
-          visualQ.push({t, kind:"pause", pauseKind, end:phaseEnd, inv:ventInv});
-        } else {
-          phase = "beats"; beat = 1; dirty = false; ranJump = false; forced = null; upcomingSwap = null; ventBeat = 0;
-          nextTime = nextSlot(t + 0.2);
-        }
-      } else {
-        if(isPending(t) && mode === 2){ beat = RUN_START; ranJump = true; dirty = true; upcomingSwap = null; }
-        nextTime = nextSlot(t + 0.2);           /* solo: just keeps ticking */
-      }
-    } else {
-      sessionEpoch = Date.now(); frozenMs = 0;  /* new patient, everything anew */
-      phase = "beats"; beat = 1; dirty = false; ranJump = false; forced = null; upcomingSwap = null; soloInv = false; ventBeat = 0; ventInv = false;
-      const base = ctx.currentTime + 0.2;
-      nextTime = base;
-      lastPauseEnd = base;
-      swapDeadline = base + SWAP_EVERY;
-      swapCapAt = base + SWAP_CAP;
-      breathCapAt = (mode === 2) ? base + BREATH_CAP : Infinity;
-    }
+    sessionEpoch = Date.now(); frozenMs = 0;  /* fresh session */
+    phase = "beats"; beat = 1; dirty = false; ranJump = false; forced = null; upcomingSwap = null; soloInv = false; ventBeat = 0; ventInv = false;
+    if(dotEls.length !== ringCycleFor(mode)) buildRing(ringCycleFor(mode));
+    const base = ctx.currentTime + 0.2;
+    nextTime = base;
+    lastPauseEnd = base;
+    swapDeadline = base + SWAP_EVERY;
+    swapCapAt = base + SWAP_CAP;
+    breathCapAt = (mode === 2) ? base + BREATH_CAP : Infinity;
+
     disp = {phase:"idle", end:0, pauseKind:""};
     timerId = setInterval(schedulerTick, TICK_MS);
     schedulerTick();
-    startBtn.textContent = "STOP";
-    startBtn.classList.add("running"); startBtn.classList.remove("resume");
     clockEl.classList.remove("frozen");
     requestWake();
+    updateButtons();
   }catch(e){
     running = false;
   }finally{
     starting = false; startBtn.disabled = false;
   }
 }
-function stop(){
+function pause(){
   if(!running) return;
-  running = false;
+  running = false; paused = true;
   clearInterval(timerId); timerId = null;
   for(const s of scheduled){ try{ s.node.stop(0); }catch(e){} }
   scheduled = []; visualQ = [];
-  /* keep beat/phase/deadlines for a grace resume; clocks keep ticking */
-  frozenMs = Date.now() - sessionEpoch;
-  graceUntil = Date.now() + GRACE_MS;
-  graceTimer = setTimeout(() => { cancelGrace(); }, GRACE_MS);
-  startBtn.textContent = "RESUME";
-  startBtn.classList.remove("running"); startBtn.classList.add("resume");
+  frozenMs = Date.now() - sessionEpoch;         /* keep beat/phase/deadlines exactly as they are, for Resume */
   clockEl.classList.add("frozen");
   releaseWake();
+  updateButtons();
 }
-function toggle(){ running ? stop() : start(); }
-startBtn.addEventListener("click", toggle);
+async function resume(){
+  if(running || !paused || starting) return;
+  starting = true;
+  try{
+    if(ctx.state === "suspended") await ctx.resume();
+    scheduled = []; visualQ = [];
+    running = true; paused = false;
+    const t = ctx.currentTime;
+    if(phase === "pause" || phase === "swapPause"){
+      if(phaseEnd > t + 0.05){
+        nextTime = (phase === "swapPause") ? t + 0.05 : phaseEnd;   /* swapPause keeps beeping; others just wait out */
+        visualQ.push({t, kind:"pause", pauseKind, end:phaseEnd, inv:ventInv});
+      } else {
+        phase = "beats"; beat = 1; dirty = false; ranJump = false; forced = null; upcomingSwap = null; ventBeat = 0;
+        if(dotEls.length !== ringCycleFor(mode)) buildRing(ringCycleFor(mode));
+        nextTime = nextSlot(t + 0.2);
+      }
+    } else {
+      if(isPending(t) && mode === 2){ beat = RUN_START; ranJump = true; dirty = true; upcomingSwap = null; }
+      nextTime = nextSlot(t + 0.2);              /* otherwise: pick up exactly where it left off */
+    }
+    disp = {phase:"idle", end:0, pauseKind:""};
+    timerId = setInterval(schedulerTick, TICK_MS);
+    schedulerTick();
+    clockEl.classList.remove("frozen");
+    requestWake();
+    updateButtons();
+  }catch(e){
+    running = false; paused = true;
+  }finally{
+    starting = false;
+  }
+}
+function stopCpr(){
+  if(!running && !paused) return;
+  if(running){
+    clearInterval(timerId); timerId = null;
+    for(const s of scheduled){ try{ s.node.stop(0); }catch(e){} }
+    frozenMs = Date.now() - sessionEpoch;
+    releaseWake();
+  }
+  scheduled = []; visualQ = [];
+  running = false; paused = false;
+  clockEl.classList.add("frozen");
+  phase = "beats"; beat = 1; dirty = false; ranJump = false; forced = null; upcomingSwap = null; soloInv = false; ventBeat = 0; ventInv = false;
+  resetSettingsToDefault();
+  disp = {phase:"idle", end:0, pauseKind:""};
+  showIdle();
+  updateButtons();
+}
+startBtn.addEventListener("click", start);
+pauseBtn.addEventListener("click", pause);
+resumeBtn.addEventListener("click", resume);
+stopBtn.addEventListener("click", stopCpr);
+updateButtons();
 
 /* ================= visuals ================================================= */
 function paintDots(n, cls){
-  for(let i = 0; i < CYCLE; i++){
+  for(let i = 0; i < dotEls.length; i++){
     const d = dotEls[i];
     if(cls){ d.setAttribute("class", "dot " + cls); continue; }
     let k = "dot";
-    if(i < n){ k += " f"; if(i >= 25) k += " last"; }
+    if(i < n){ k += " f"; if(i >= dotEls.length - 5) k += " last"; }
     d.setAttribute("class", k);
   }
 }
 function paintDotsSolo(n, inv, warn){ /* inv=false: 1..n white; inv=true: 1..n gray; warn=true tints filled dots amber */
-  for(let i = 0; i < CYCLE; i++){
+  for(let i = 0; i < dotEls.length; i++){
     const filled = inv ? (i >= n) : (i < n);
     let k = filled ? "dot f" : "dot";
     if(filled && warn) k += " last";
@@ -746,9 +932,13 @@ function frame(){
     resetBtn.textContent = "RESET COUNT TO 1";
     resetBtn.classList.remove("hide");
     resetBtn.disabled = (mode === 1) || (mode === 3) || phase === "pause" || lockedAt(now);
+    patientRow.classList.add("locked");        /* age group can't change mid-CPR; rescuers (like mode) still can */
   } else {
+    patientRow.classList.toggle("locked", paused);   /* only changeable once fully reset (Stop), not merely paused */
     clockEl.textContent = fmtClock(frozenMs);
-    if(frozenMs > 0){
+    if(paused){
+      resetBtn.classList.add("hide");           /* nothing to reset mid-pause — Resume or Stop instead */
+    } else if(frozenMs > 0){
       resetBtn.textContent = "RESET TIME TO 0";
       resetBtn.classList.remove("hide");
       resetBtn.disabled = false;
@@ -782,7 +972,7 @@ swapLen.addEventListener("input", () => { $("swapOut").textContent = swapLen.val
 rateLen.addEventListener("input", () => {
   BEAT = 60 / (+rateLen.value);
   rateOut.textContent = rateLen.value + " BPM";
-  if(mode !== 3) subEl.textContent = rateLen.value + " BPM · " + (mode === 2 ? "30:2" : "continuous");
+  if(mode !== 3) subEl.textContent = rateLen.value + " BPM · " + (mode === 2 ? (TEAM_CYCLE + ":2") : "continuous");
 });
 document.addEventListener("keydown", e => {
   if(e.code !== "Space") return;
