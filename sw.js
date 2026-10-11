@@ -1,7 +1,7 @@
 // חשוב: בכל פעם שאתם מעדכנים את index.html (או כל קובץ אחר ב-ASSETS),
 // חובה לשנות את המחרוזת הזו (CACHE) למשהו חדש (למשל תאריך/שעה נוכחיים).
 // זה מה שגורם לדפדפן לזהות שיש service worker חדש ולהתקין אותו.
-const CACHE = "cpr-20261011155931";
+const CACHE = "cpr-20261011162100";
 
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest",
 "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];

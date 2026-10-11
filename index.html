@@ -101,7 +101,7 @@
     align-items:center; justify-content:center; gap:2px; flex:1 1 0;
   }
   .seg button span{font-size:8.5px; font-weight:700; letter-spacing:.04em; white-space:nowrap;}
-  #patientRow .seg button span{font-size:15px; letter-spacing:.06em;}
+  #patientRow .seg button span, #rescuersRow .seg button span{font-size:15px; letter-spacing:.06em;}
   #mode1 svg, #mode2 .icon-row svg:nth-child(1){fill:#ff4d4d;}
   #mode2 .icon-row svg:nth-child(3), #mode3 svg{fill:#4aa3ff;}
   .seg button .icon-row{display:flex; align-items:center; justify-content:space-between; width:100%;}
@@ -170,8 +170,8 @@
   <div class="row hidden" id="rescuersRow">
     <span class="lab">Rescuers</span>
     <div class="seg" role="group" aria-label="Number of rescuers (kid Full CPR only — changes compressions:breath ratio)">
-      <button id="rescuersSolo" class="on" aria-pressed="true"><span>SOLO</span><span style="font-size:7.5px;opacity:.7">30:2</span></button>
-      <button id="rescuersTeam" aria-pressed="false"><span>TEAM</span><span style="font-size:7.5px;opacity:.7">15:2</span></button>
+      <button id="rescuersSolo" class="on" aria-pressed="true"><span>SOLO (30:2)</span></button>
+      <button id="rescuersTeam" aria-pressed="false"><span>TEAM (15:2)</span></button>
     </div>
   </div>
   <div class="row">
