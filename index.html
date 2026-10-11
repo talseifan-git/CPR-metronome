@@ -101,12 +101,15 @@
     align-items:center; justify-content:center; gap:2px; flex:1 1 0;
   }
   .seg button span{font-size:8.5px; font-weight:700; letter-spacing:.04em; white-space:nowrap;}
+  #patientRow .seg button span{font-size:15px; letter-spacing:.06em;}
+  #mode1 svg, #mode2 .icon-row svg:nth-child(1){fill:#ff4d4d;}
+  #mode2 .icon-row svg:nth-child(3), #mode3 svg{fill:#4aa3ff;}
   .seg button .icon-row{display:flex; align-items:center; justify-content:space-between; width:100%;}
   #mode2{display:grid; grid-template-columns:max-content; justify-content:center; justify-items:stretch; align-content:center; row-gap:2px;}
   #mode2 span:last-child{text-align:center;}
   .seg button.on{background:#2a2e35; color:var(--fg);}
   input[type=range]{
-    flex:1; min-width:60px; height:32px; accent-color:var(--cyan); margin:0;
+    flex:1; min-width:60px; height:32px; accent-color:#e879f9; margin:0;
   }
   input[type=range]:disabled{opacity:.35;}
 
