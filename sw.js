@@ -1,7 +1,7 @@
 // חשוב: בכל פעם שאתם מעדכנים את index.html (או כל קובץ אחר ב-ASSETS),
 // חובה לשנות את המחרוזת הזו (CACHE) למשהו חדש (למשל תאריך/שעה נוכחיים).
 // זה מה שגורם לדפדפן לזהות שיש service worker חדש ולהתקין אותו.
-const CACHE = "cpr-20260921182200";
+const CACHE = "cpr-20261011120838";
 
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest",
 "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
@@ -18,6 +18,7 @@ self.addEventListener("activate", e => {
 
 self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
+  if (new URL(e.request.url).origin !== location.origin) return;   // never cache third-party responses
   e.respondWith(
     caches.match(e.request, {ignoreSearch: true}).then(hit => hit ||
       fetch(e.request).then(resp => {
