@@ -108,7 +108,7 @@
   #mode2 span:last-child{text-align:center;}
   .seg button.on{background:#2a2e35; color:var(--fg);}
   input[type=range]{
-    direction:ltr; flex:1; min-width:60px; height:32px; accent-color:#e879f9; margin:0;
+    direction:ltr; flex:1; min-width:60px; height:32px; accent-color:var(--amber); margin:0;
   }
   input[type=range]:disabled{opacity:.35;}
 
@@ -120,16 +120,28 @@
     color:#6a7076; font-size:11px; text-align:center; width:100%; max-width:420px;
   }
 
-  /* short screens */
-  @media (max-height:800px){
-    body{gap:5px; padding-top:5px;}
-    header h1{font-size:16px;} #sub{font-size:12px;} #clock{font-size:22px;}
-    #ringWrap{width:min(66vw,225px);}
-    #num{font-size:60px;} #stateLab{font-size:15px; min-height:17px; max-width:165px;}
-    .mainBtn{height:52px; font-size:18px;}
+  /* short screens — compact layout; the footer stays visible, the reset button keeps its size */
+  @media (max-height:890px){
+    body{gap:4px; padding-top:4px; padding-bottom:3px;}
+    header h1{font-size:16px;} #sub{font-size:12px; margin-top:1px;} #clock{font-size:20px; margin-top:0;}
+    #ringWrap{width:min(60vw,200px);}
+    #num{font-size:54px;} #stateLab{font-size:14px; min-height:16px; max-width:150px; margin-bottom:2px;}
+    #btns{gap:5px;}
+    .mainBtn{height:48px; font-size:18px;}
     #resetBtn{height:46px; font-size:14px;}
-    .row{min-height:36px;}
-    footer{display:none;}
+    #panel{padding:4px 10px; gap:1px;}
+    .row{min-height:32px;}
+    .seg button{height:38px;}
+    .row input[type=range]{height:28px;}
+    footer{font-size:10px; line-height:1.25;}
+    #credit{font-size:10px;}
+  }
+  @media (max-height:680px){
+    #ringWrap{width:min(52vw,170px);}
+    #num{font-size:46px;}
+    header h1{font-size:15px;}
+    .seg button{height:34px;}
+    .row{min-height:30px;}
   }
 </style>
 </head>
@@ -150,10 +162,10 @@
 
 <div id="btns">
   <div id="primaryRow">
-    <button id="startBtn" class="mainBtn">התחל</button>
-    <button id="pauseBtn" class="mainBtn" style="display:none">השהה</button>
+    <button id="startBtn" class="mainBtn">התחל (▶︎)</button>
+    <button id="pauseBtn" class="mainBtn" style="display:none">השהה (⏸︎)</button>
     <button id="resumeBtn" class="mainBtn" style="display:none">המשך</button>
-    <button id="stopBtn" class="mainBtn" style="display:none">עצור</button>
+    <button id="stopBtn" class="mainBtn" style="display:none">עצור (⏹︎)</button>
   </div>
   <button id="resetBtn" class="hide">אפס ספירה ל־1</button>
 </div>
@@ -917,8 +929,8 @@ function applyEvent(e){
       paintDotsSolo(e.beat, e.inv, e.warn ? warnSet : null);
     } else {
       numEl.textContent = e.cnt;         /* mirrors the voice: countup or countdown */
-      if(e.lab === "swr"){ labEl.className = "cyan"; labEl.textContent = "החלפה + הנשמה בעוד"; }
-      else if(e.lab === "b"){ labEl.className = "green"; labEl.textContent = "הנשמה בעוד"; }
+      if(e.lab === "swr"){ labEl.className = "amber"; labEl.textContent = "החלפה + הנשמה בעוד"; }
+      else if(e.lab === "b"){ labEl.className = "amber"; labEl.textContent = "הנשמה בעוד"; }
       else { labEl.className = ""; labEl.textContent = ""; }
       paintDots(e.beat, null, e.warn ? warnSet : null);   /* ring keeps the true circle position */
     }
