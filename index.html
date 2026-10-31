@@ -120,28 +120,16 @@
     color:#6a7076; font-size:11px; text-align:center; width:100%; max-width:420px;
   }
 
-  /* short screens — compact layout; the footer stays visible, the reset button keeps its size */
-  @media (max-height:890px){
-    body{gap:4px; padding-top:4px; padding-bottom:3px;}
-    header h1{font-size:16px;} #sub{font-size:12px; margin-top:1px;} #clock{font-size:20px; margin-top:0;}
-    #ringWrap{width:min(60vw,200px);}
-    #num{font-size:54px;} #stateLab{font-size:14px; min-height:16px; max-width:150px; margin-bottom:2px;}
-    #btns{gap:5px;}
-    .mainBtn{height:48px; font-size:18px;}
+  /* short screens */
+  @media (max-height:800px){
+    body{gap:5px; padding-top:5px;}
+    header h1{font-size:16px;} #sub{font-size:12px;} #clock{font-size:22px;}
+    #ringWrap{width:min(66vw,225px);}
+    #num{font-size:60px;} #stateLab{font-size:15px; min-height:17px; max-width:165px;}
+    .mainBtn{height:52px; font-size:18px;}
     #resetBtn{height:46px; font-size:14px;}
-    #panel{padding:4px 10px; gap:1px;}
-    .row{min-height:32px;}
-    .seg button{height:38px;}
-    .row input[type=range]{height:28px;}
-    footer{font-size:10px; line-height:1.25;}
-    #credit{font-size:10px;}
-  }
-  @media (max-height:680px){
-    #ringWrap{width:min(52vw,170px);}
-    #num{font-size:46px;}
-    header h1{font-size:15px;}
-    .seg button{height:34px;}
-    .row{min-height:30px;}
+    .row{min-height:36px;}
+    footer{display:none;}
   }
 </style>
 </head>
