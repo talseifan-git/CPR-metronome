@@ -1,7 +1,9 @@
 {
-  "name": "CPR Metronome",
-  "short_name": "CPR",
-  "description": "120 BPM CPR metronome with voiced counts, 30:2 team cycles and solo mode",
+  "name": "מטרונום החייאה",
+  "short_name": "החייאה",
+  "description": "מטרונום החייאה עם ספירה קולית, מחזורי 30:2 בצוות ומצב יחיד",
+  "lang": "he",
+  "dir": "rtl",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
